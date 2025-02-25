@@ -32,7 +32,7 @@ export interface VideoGenerationOptions {
 export interface ImageGenerationOptions {
   prompt: string;
   aspect_ratio?: '16:9' | '1:1' | '9:16' | '4:3' | '3:4' | '21:9' | '9:21';
-  model?: 'photon-1' | 'photon-flash-1';
+  model?: 'ray-2' | 'ray-1-6';
 }
 
 export interface GeneratedMedia {
