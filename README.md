@@ -13,6 +13,34 @@ graph TD
     H --> I[最終動画]
 ```
 
+## セットアップ
+
+1. リポジトリをクローンします
+   ```bash
+   git clone <repository-url>
+   cd music_to_video
+   ```
+
+2. 依存関係をインストールします
+   ```bash
+   npm install
+   ```
+
+3. 環境変数を設定します
+   - `.env.example` ファイルを `.env` にコピーします
+   ```bash
+   cp .env.example .env
+   ```
+   - `.env` ファイルを編集して、必要なAPIキーを設定します
+     - `VITE_GEMINI_API_KEY`: Google Gemini API キー
+     - `VITE_LUMA_API_KEY`: フロントエンド用 Luma API キー
+     - `LUMA_API_KEY`: サーバー用 Luma API キー
+
+4. 開発サーバーを起動します
+   ```bash
+   npm run dev
+   ```
+
 ## 処理フロー詳細
 
 1. **音声ファイルアップロード**
