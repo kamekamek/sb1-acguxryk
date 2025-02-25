@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { Request, Response, NextFunction } from 'express';
 
 // ESMでの__dirnameの代替
 const __filename = fileURLToPath(import.meta.url);
@@ -18,12 +19,12 @@ app.use(cors());
 app.use(express.json());
 
 // エラーハンドリングミドルウェア
-const handleProxyError = (err, req, res, target) => {
+const handleProxyError = (err: Error, req: Request, res: Response, target?: string) => {
   console.error('プロキシエラー:', err);
   res.status(500).json({
     error: true,
     message: `APIリクエストに失敗しました: ${err.message || 'Unknown error'}`,
-    code: err.code
+    code: (err as any).code
   });
 };
 
@@ -126,7 +127,7 @@ app.use('/api/luma/:id', (req, res, next) => {
 }));
 
 // グローバルエラーハンドラー
-app.use((err, req, res, next) => {
+app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   console.error('サーバーエラー:', err);
   res.status(500).json({
     error: true,
