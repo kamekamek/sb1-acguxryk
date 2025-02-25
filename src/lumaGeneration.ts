@@ -3,6 +3,11 @@ import { SegmentAnalysis } from './audioAnalysis';
 
 const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY || '');
 
+
+
+// バックエンドプロキシのベースURL
+const API_BASE_URL = 'http://localhost:3001';
+
 export interface LumaResponse {
   id: string;
   state: 'pending' | 'processing' | 'completed' | 'failed';
@@ -20,14 +25,14 @@ export interface VideoGenerationOptions {
       timing?: number;
     }
   };
-  model?: string;
+  model?: 'ray-2' | 'ray-1-6';
   audioUrl?: string;
 }
 
 export interface ImageGenerationOptions {
   prompt: string;
-  aspect_ratio?: string;
-  model?: string;
+  aspect_ratio?: '16:9' | '1:1' | '9:16' | '4:3' | '3:4' | '21:9' | '9:21';
+  model?: 'photon-1' | 'photon-flash-1';
 }
 
 export interface GeneratedMedia {
@@ -145,54 +150,38 @@ export async function pollGenerationStatus(id: string): Promise<LumaResponse> {
   const pollingInterval = 2000;
 
   while (!completed && attempts < maxAttempts) {
-    const response = await fetch(`/api/luma/${id}`, {
-      headers: {
-        'Authorization': `Bearer ${import.meta.env.VITE_LUMA_API_KEY}`,
-        'Content-Type': 'application/json'
+    try {
+      // バックエンドプロキシを使用して生成状態を取得
+      const response = await fetch(`${API_BASE_URL}/api/luma/${id}`);
+      
+      if (!response.ok) {
+        throw new Error(`APIエラー: ${response.status} ${response.statusText}`);
       }
-    });
+      
+      const generation = await response.json();
+      console.log('Generation status:', generation);
 
-    if (!response.ok) {
-      let errorMessage = '生成状態の取得に失敗しました';
-      let errorData;
-      
-      try {
-        errorData = await response.json();
-        console.error('APIエラーレスポンス:', errorData);
-        
-        if (errorData.detail === 'Insufficient credits') {
-          errorMessage = 'Luma APIのクレジットが不足しています。APIキーの利用枠を確認してください。';
-        } else {
-          errorMessage = errorData.detail || errorData.message || errorMessage;
-        }
-      } catch (jsonError) {
-        // JSONのパースに失敗した場合はステータステキストを使用
-        errorMessage = `生成状態の取得に失敗しました (${response.status}: ${response.statusText})`;
+      if (generation.state === 'completed') {
+        completed = true;
+        return {
+          id: generation.id || id,
+          state: 'completed',
+          imageUrl: generation.assets?.image,
+          videoUrl: generation.assets?.video
+        };
+      } else if (generation.state === 'failed') {
+        return {
+          id: generation.id || id,
+          state: 'failed',
+          failure_reason: generation.failure_reason || '不明なエラー'
+        };
       }
-      
+    } catch (error) {
+      console.error('生成状態の取得に失敗:', error);
       return {
         id: id,
         state: 'failed',
-        failure_reason: errorMessage
-      };
-    }
-
-    const status = await response.json();
-    console.log('Generation status:', status);
-
-    if (status.state === 'completed') {
-      completed = true;
-      return {
-        id: status.id,
-        state: 'completed',
-        imageUrl: status.assets?.video_0_thumb || status.assets?.image,
-        videoUrl: status.assets?.video
-      };
-    } else if (status.state === 'failed') {
-      return {
-        id: status.id,
-        state: 'failed',
-        failure_reason: status.failure_reason
+        failure_reason: error instanceof Error ? error.message : '不明なエラー'
       };
     }
 
@@ -210,11 +199,11 @@ export async function pollGenerationStatus(id: string): Promise<LumaResponse> {
  */
 export async function generateLumaImage(options: ImageGenerationOptions): Promise<LumaResponse> {
   try {
-    const response = await fetch('/api/luma', {
+    // バックエンドプロキシを使用して画像を生成
+    const response = await fetch(`${API_BASE_URL}/api/luma`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${import.meta.env.VITE_LUMA_API_KEY}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         prompt: options.prompt,
@@ -222,35 +211,20 @@ export async function generateLumaImage(options: ImageGenerationOptions): Promis
         model: options.model || 'ray-2'
       })
     });
-
+    
     if (!response.ok) {
-      let errorMessage = '画像生成リクエストに失敗しました';
-      let errorData;
-      
-      try {
-        errorData = await response.json();
-        console.error('APIエラーレスポンス:', errorData);
-        
-        if (errorData.detail === 'Insufficient credits') {
-          errorMessage = 'Luma APIのクレジットが不足しています。APIキーの利用枠を確認してください。';
-        } else {
-          errorMessage = errorData.detail || errorData.message || errorMessage;
-        }
-      } catch (jsonError) {
-        // JSONのパースに失敗した場合はステータステキストを使用
-        errorMessage = `画像生成リクエストに失敗しました (${response.status}: ${response.statusText})`;
-      }
-      
-      return {
-        id: 'error',
-        state: 'failed',
-        failure_reason: errorMessage
-      };
+      throw new Error(`APIエラー: ${response.status} ${response.statusText}`);
     }
-
+    
     const generation = await response.json();
     console.log('Image generation response:', generation);
-    return await pollGenerationStatus(generation.id);
+    
+    // 生成IDを取得して状態をポーリング
+    if (generation.id) {
+      return await pollGenerationStatus(generation.id);
+    } else {
+      throw new Error('生成IDが取得できませんでした');
+    }
   } catch (error) {
     console.error('画像生成エラー:', error);
     return {
@@ -268,6 +242,7 @@ export async function generateLumaImage(options: ImageGenerationOptions): Promis
  */
 export async function generateLumaVideo(options: VideoGenerationOptions): Promise<LumaResponse> {
   try {
+    // リクエストボディの作成
     const requestBody: any = {
       prompt: options.prompt,
       model: options.model || 'ray-2',
@@ -280,43 +255,28 @@ export async function generateLumaVideo(options: VideoGenerationOptions): Promis
 
     console.log('Video generation request:', requestBody);
 
-    const response = await fetch('/api/luma', {
+    // バックエンドプロキシを使用して動画を生成
+    const response = await fetch(`${API_BASE_URL}/api/luma`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${import.meta.env.VITE_LUMA_API_KEY}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify(requestBody)
     });
-
+    
     if (!response.ok) {
-      let errorMessage = '動画生成リクエストに失敗しました';
-      let errorData;
-      
-      try {
-        errorData = await response.json();
-        console.error('APIエラーレスポンス:', errorData);
-        
-        if (errorData.detail === 'Insufficient credits') {
-          errorMessage = 'Luma APIのクレジットが不足しています。APIキーの利用枠を確認してください。';
-        } else {
-          errorMessage = errorData.detail || errorData.message || errorMessage;
-        }
-      } catch (jsonError) {
-        // JSONのパースに失敗した場合はステータステキストを使用
-        errorMessage = `動画生成リクエストに失敗しました (${response.status}: ${response.statusText})`;
-      }
-      
-      return {
-        id: 'error',
-        state: 'failed',
-        failure_reason: errorMessage
-      };
+      throw new Error(`APIエラー: ${response.status} ${response.statusText}`);
     }
-
+    
     const generation = await response.json();
     console.log('Video generation response:', generation);
-    return await pollGenerationStatus(generation.id);
+
+    // 生成IDを取得して状態をポーリング
+    if (generation.id) {
+      return await pollGenerationStatus(generation.id);
+    } else {
+      throw new Error('生成IDが取得できませんでした');
+    }
   } catch (error) {
     console.error('動画生成エラー:', error);
     return {
@@ -346,8 +306,7 @@ export async function generateImagesInParallel(
     const batchPromises = batch.map((analysis, index) => {
       return generateLumaImage({
         prompt: analysis.imagePrompt,
-        aspect_ratio: '16:9',
-        model: 'photon-1'
+        aspect_ratio: '16:9'
       })
       .then(response => {
         return {

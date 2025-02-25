@@ -27,7 +27,7 @@ function App() {
       const options: ImageGenerationOptions = {
         prompt: prompt,
         aspect_ratio: '16:9',
-        model: 'ray-2'
+        model: 'photon-1'
       };
 
       const response = await generateLumaImage(options);
