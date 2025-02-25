@@ -5,10 +5,11 @@ import { createProxyMiddleware } from 'http-proxy-middleware';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { Request, Response, NextFunction } from 'express';
+import { Url } from 'url';
 
 // ESMでの__dirnameの代替
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+// const __dirname = dirname(__filename); // 未使用なので削除またはコメントアウト
 
 dotenv.config();
 
@@ -19,7 +20,7 @@ app.use(cors());
 app.use(express.json());
 
 // エラーハンドリングミドルウェア
-const handleProxyError = (err: Error, req: Request, res: Response, target?: string) => {
+const handleProxyError = (err: Error, _req: Request, res: Response, _target?: string | Partial<Url>) => {
   console.error('プロキシエラー:', err);
   res.status(500).json({
     error: true,
@@ -29,7 +30,7 @@ const handleProxyError = (err: Error, req: Request, res: Response, target?: stri
 };
 
 // Luma API用のプロキシエンドポイント
-app.use('/api/luma', (req, res, next) => {
+app.use('/api/luma', (req, _res, next) => {
   console.log('Luma APIリクエスト:', {
     method: req.method,
     path: req.path,
@@ -43,7 +44,7 @@ app.use('/api/luma', (req, res, next) => {
   pathRewrite: {
     '^/api/luma': '/dream-machine/v1/generations'
   },
-  onProxyReq: (proxyReq, req, res) => {
+  onProxyReq: (proxyReq, _req, _res) => {
     // リクエストヘッダーの設定
     if (process.env.LUMA_API_KEY) {
       proxyReq.setHeader('Authorization', `Bearer ${process.env.LUMA_API_KEY}`);
@@ -53,7 +54,7 @@ app.use('/api/luma', (req, res, next) => {
     }
     proxyReq.setHeader('Content-Type', 'application/json');
   },
-  onProxyRes: (proxyRes, req, res) => {
+  onProxyRes: (proxyRes, _req, _res) => {
     console.log('Luma API応答:', {
       statusCode: proxyRes.statusCode,
       statusMessage: proxyRes.statusMessage,
@@ -79,7 +80,7 @@ app.use('/api/luma', (req, res, next) => {
 }));
 
 // 特定のLuma生成IDの状態を取得するエンドポイント
-app.use('/api/luma/:id', (req, res, next) => {
+app.use('/api/luma/:id', (req, _res, next) => {
   console.log('Luma 生成ID取得リクエスト:', {
     method: req.method,
     path: req.path,
@@ -90,19 +91,19 @@ app.use('/api/luma/:id', (req, res, next) => {
 }, createProxyMiddleware({
   target: 'https://api.lumalabs.ai',
   changeOrigin: true,
-  pathRewrite: (path, req) => {
+  pathRewrite: (path, _req) => {
     const id = path.split('/').pop();
     const newPath = `/dream-machine/v1/generations/${id}`;
     console.log(`パスの書き換え: ${path} -> ${newPath}`);
     return newPath;
   },
-  onProxyReq: (proxyReq, req, res) => {
+  onProxyReq: (proxyReq, _req, _res) => {
     if (process.env.LUMA_API_KEY) {
       proxyReq.setHeader('Authorization', `Bearer ${process.env.LUMA_API_KEY}`);
     }
     proxyReq.setHeader('Content-Type', 'application/json');
   },
-  onProxyRes: (proxyRes, req, res) => {
+  onProxyRes: (proxyRes, _req, _res) => {
     console.log('Luma 生成ID応答:', {
       statusCode: proxyRes.statusCode,
       statusMessage: proxyRes.statusMessage
@@ -127,7 +128,7 @@ app.use('/api/luma/:id', (req, res, next) => {
 }));
 
 // グローバルエラーハンドラー
-app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   console.error('サーバーエラー:', err);
   res.status(500).json({
     error: true,

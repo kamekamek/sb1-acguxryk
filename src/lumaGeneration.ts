@@ -138,7 +138,7 @@ ${JSON.stringify(analysis, null, 2)}
  * @param id 生成ID
  * @returns 生成結果
  */
-async function pollGenerationStatus(id: string): Promise<LumaResponse> {
+export async function pollGenerationStatus(id: string): Promise<LumaResponse> {
   let completed = false;
   let attempts = 0;
   const maxAttempts = 30;
@@ -347,7 +347,7 @@ export async function generateImagesInParallel(
       return generateLumaImage({
         prompt: analysis.imagePrompt,
         aspect_ratio: '16:9',
-        model: 'ray-2'
+        model: 'photon-1'
       })
       .then(response => {
         return {
@@ -368,14 +368,17 @@ export async function generateImagesInParallel(
           imageResponse: {
             id: `error-${i + index}`,
             state: 'failed',
-            failure_reason: error instanceof Error ? error.message : '不明なエラー'
+            failure_reason: error instanceof Error ? error.message : '不明なエラー',
+            imageUrl: undefined
           }
         };
       });
     });
     
     const batchResults = await Promise.all(batchPromises);
-    results.push(...batchResults);
+    results.push(...batchResults.filter((result): result is GeneratedMedia => 
+      result.imageResponse.state === 'completed' && result.imageResponse.imageUrl !== undefined
+    ));
     
     if (onProgress) {
       onProgress(Math.min(i + batchSize, analyses.length), analyses.length);
