@@ -1,0 +1,2 @@
+
+curl -X GET https://api.lumalabs.ai/dream-machine/v1/generations -H "Authorization: Bearer luma-a16d9552-81d5-42b5-98d4-b5a2d477bbf8-5c72b78e-dbf4-464e-a164-5d00c961292e" 

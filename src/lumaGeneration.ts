@@ -153,7 +153,28 @@ async function pollGenerationStatus(id: string): Promise<LumaResponse> {
     });
 
     if (!response.ok) {
-      throw new Error('生成状態の取得に失敗しました');
+      let errorMessage = '生成状態の取得に失敗しました';
+      let errorData;
+      
+      try {
+        errorData = await response.json();
+        console.error('APIエラーレスポンス:', errorData);
+        
+        if (errorData.detail === 'Insufficient credits') {
+          errorMessage = 'Luma APIのクレジットが不足しています。APIキーの利用枠を確認してください。';
+        } else {
+          errorMessage = errorData.detail || errorData.message || errorMessage;
+        }
+      } catch (jsonError) {
+        // JSONのパースに失敗した場合はステータステキストを使用
+        errorMessage = `生成状態の取得に失敗しました (${response.status}: ${response.statusText})`;
+      }
+      
+      return {
+        id: id,
+        state: 'failed',
+        failure_reason: errorMessage
+      };
     }
 
     const status = await response.json();
@@ -164,7 +185,7 @@ async function pollGenerationStatus(id: string): Promise<LumaResponse> {
       return {
         id: status.id,
         state: 'completed',
-        imageUrl: status.assets?.image || status.assets?.video_0_thumb,
+        imageUrl: status.assets?.video_0_thumb || status.assets?.image,
         videoUrl: status.assets?.video
       };
     } else if (status.state === 'failed') {
@@ -198,13 +219,33 @@ export async function generateLumaImage(options: ImageGenerationOptions): Promis
       body: JSON.stringify({
         prompt: options.prompt,
         aspect_ratio: options.aspect_ratio || '16:9',
-        model: options.model || 'photon-1'
+        model: options.model || 'ray-2'
       })
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || '画像生成リクエストに失敗しました');
+      let errorMessage = '画像生成リクエストに失敗しました';
+      let errorData;
+      
+      try {
+        errorData = await response.json();
+        console.error('APIエラーレスポンス:', errorData);
+        
+        if (errorData.detail === 'Insufficient credits') {
+          errorMessage = 'Luma APIのクレジットが不足しています。APIキーの利用枠を確認してください。';
+        } else {
+          errorMessage = errorData.detail || errorData.message || errorMessage;
+        }
+      } catch (jsonError) {
+        // JSONのパースに失敗した場合はステータステキストを使用
+        errorMessage = `画像生成リクエストに失敗しました (${response.status}: ${response.statusText})`;
+      }
+      
+      return {
+        id: 'error',
+        state: 'failed',
+        failure_reason: errorMessage
+      };
     }
 
     const generation = await response.json();
@@ -249,8 +290,28 @@ export async function generateLumaVideo(options: VideoGenerationOptions): Promis
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || '動画生成リクエストに失敗しました');
+      let errorMessage = '動画生成リクエストに失敗しました';
+      let errorData;
+      
+      try {
+        errorData = await response.json();
+        console.error('APIエラーレスポンス:', errorData);
+        
+        if (errorData.detail === 'Insufficient credits') {
+          errorMessage = 'Luma APIのクレジットが不足しています。APIキーの利用枠を確認してください。';
+        } else {
+          errorMessage = errorData.detail || errorData.message || errorMessage;
+        }
+      } catch (jsonError) {
+        // JSONのパースに失敗した場合はステータステキストを使用
+        errorMessage = `動画生成リクエストに失敗しました (${response.status}: ${response.statusText})`;
+      }
+      
+      return {
+        id: 'error',
+        state: 'failed',
+        failure_reason: errorMessage
+      };
     }
 
     const generation = await response.json();
@@ -278,6 +339,7 @@ export async function generateImagesInParallel(
 ): Promise<GeneratedMedia[]> {
   const batchSize = 3; // 同時に生成する画像の数
   const results: GeneratedMedia[] = [];
+  const errors: {index: number, error: any}[] = [];
   
   for (let i = 0; i < analyses.length; i += batchSize) {
     const batch = analyses.slice(i, i + batchSize);
@@ -285,13 +347,29 @@ export async function generateImagesInParallel(
       return generateLumaImage({
         prompt: analysis.imagePrompt,
         aspect_ratio: '16:9',
-        model: 'photon-1'
-      }).then(response => {
+        model: 'ray-2'
+      })
+      .then(response => {
         return {
           segmentIndex: i + index,
           startTime: analysis.startTime,
           endTime: analysis.endTime,
           imageResponse: response
+        };
+      })
+      .catch(error => {
+        console.error(`セグメント ${i + index} の画像生成に失敗:`, error);
+        errors.push({index: i + index, error});
+        // エラーが発生しても処理を続行するために、失敗状態のレスポンスを返す
+        return {
+          segmentIndex: i + index,
+          startTime: analysis.startTime,
+          endTime: analysis.endTime,
+          imageResponse: {
+            id: `error-${i + index}`,
+            state: 'failed',
+            failure_reason: error instanceof Error ? error.message : '不明なエラー'
+          }
         };
       });
     });
@@ -302,6 +380,11 @@ export async function generateImagesInParallel(
     if (onProgress) {
       onProgress(Math.min(i + batchSize, analyses.length), analyses.length);
     }
+  }
+  
+  // エラーの概要をログに出力
+  if (errors.length > 0) {
+    console.warn(`${errors.length}個のセグメントで画像生成に失敗しました`);
   }
   
   return results.sort((a, b) => a.segmentIndex - b.segmentIndex);
@@ -325,7 +408,12 @@ export async function createVideoFromImages(
   );
   
   if (successfulImages.length === 0) {
-    throw new Error('有効な画像がありません');
+    throw new Error('有効な画像がありません。すべての画像生成に失敗しました。');
+  }
+  
+  // 成功した画像が少なすぎる場合は警告を表示
+  if (successfulImages.length < generatedImages.length * 0.5) {
+    console.warn(`警告: 生成された画像の${Math.round((1 - successfulImages.length / generatedImages.length) * 100)}%が失敗しました。動画の品質が低下する可能性があります。`);
   }
   
   // キーフレームの作成
