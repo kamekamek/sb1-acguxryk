@@ -1,0 +1,30 @@
+# Music to Video プロジェクト構造
+
+## プロジェクト概要
+- 音声ファイルをアップロードし、Gemini APIで分析
+- 分析結果からLuma APIを使用して画像と動画を生成
+- 最終的に音声と映像を合成した動画を出力
+
+## 主要ファイル
+- src/App.tsx: メインのReactコンポーネント
+- src/lumaGeneration.ts: Luma APIを使用した画像・動画生成機能
+- src/audioAnalysis.ts: 音声ファイルの分析機能
+- src/geminiAnalysis.ts: Gemini APIを使用した分析機能
+- src/server/api.ts: バックエンドAPIサーバー
+
+## 環境変数
+- VITE_GEMINI_API_KEY: Google Gemini API キー（フロントエンド用）
+- VITE_LUMA_API_KEY: Luma API キー（フロントエンド用）
+- LUMA_API_KEY: Luma API キー（サーバー用）
+
+## 技術スタック
+- フロントエンド: React, TypeScript, Tailwind CSS
+- バックエンド: Express
+- API: Google Gemini API, Luma API
+- ビルドツール: Vite
+
+## ファイル追加時のルール
+- 新しいコンポーネントは src/components/ ディレクトリに追加
+- 新しいユーティリティ関数は src/utils/ ディレクトリに追加
+- 新しいAPIエンドポイントは src/server/ ディレクトリに追加
+- 環境変数を追加した場合は .env.example と .cursorules の両方を更新 
