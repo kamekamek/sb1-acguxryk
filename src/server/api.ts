@@ -51,7 +51,7 @@ app.use('/api/luma', (req, _res, next) => {
       authorization: req.headers.authorization ? '***認証情報は非表示***' : undefined
     }
   });
-  console.log('リクエスト先URL:', 'https://api.lumalabs.ai/dream-machine/v1/generations' + req.path);
+  console.log('リクエスト先URL:', 'https://api.lumalabs.ai/dream-machine/v1/generations/image' + req.path);
   next();
 }, createProxyMiddleware({
   target: 'https://api.lumalabs.ai',
